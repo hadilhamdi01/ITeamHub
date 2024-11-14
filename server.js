@@ -6,10 +6,11 @@ const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
 const User = require('./models/User');
+const CentreInteret = require('./models/CentreInteret');
 
 const app = express();
 const SECRET_KEY = 'abcd1234';
-const RESET_PASSWORD_SECRET = 'resetSecret1234'; // Clé secrète pour les tokens de réinitialisation
+const RESET_PASSWORD_SECRET = 'resetSecret1234';
 
 // Connexion à MongoDB
 mongoose.connect('mongodb://localhost:27017/iteam', {
@@ -23,20 +24,31 @@ mongoose.connect('mongodb://localhost:27017/iteam', {
 app.use(cors());
 app.use(bodyParser.json());
 
-// Route d'inscription
+
+
+
+// POST /register
 app.post('/register', async (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, pseudo, sexe, centresInteret } = req.body;
 
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new User({ email, password: hashedPassword });
-        await user.save();
-        res.json({ message: 'Utilisateur créé avec succès' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Erreur lors de la création de l\'utilisateur' });
+        // Enregistre un nouvel utilisateur avec les centres d'intérêt sélectionnés
+        const newUser = new User({
+            email,
+            password, // Assure-toi de le hacher (par exemple avec bcrypt)
+            pseudo,
+            sexe,
+            centresInteret
+        });
+
+        await newUser.save();
+        res.status(201).json({ message: 'Utilisateur enregistré avec succès' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Erreur lors de l\'enregistrement de l\'utilisateur' });
     }
 });
+
 
 // Route de connexion
 app.post('/login', async (req, res) => {
@@ -78,7 +90,7 @@ app.post('/forgot-password', async (req, res) => {
             },
         });
 
-        const resetLink = `http://localhost:3000/reset-password?token=${resetToken}`;
+        const resetLink = `http://192.168.1.15:3000/reset-password?token=${resetToken}`;
         const mailOptions = {
             from: '"Votre Application" essaiedwali51@gmail.com',
             to: email,
@@ -120,6 +132,9 @@ app.post('/reset-password', async (req, res) => {
         res.status(500).json({ message: 'Erreur lors de la réinitialisation du mot de passe' });
     }
 });
+
+const centresInteretRoutes = require('./routes/centresInteret');
+app.use(centresInteretRoutes); // Utilise les routes des centres d'intérêt
 
 // Lancer le serveur
 app.listen(3000, () => {
