@@ -27,17 +27,19 @@ app.use(bodyParser.json());
 
 
 
+
 // POST /register
 app.post('/register', async (req, res) => {
-    const { email, password, pseudo, sexe, centresInteret } = req.body;
+    const { email, password, pseudo, sexe, avatar, centresInteret } = req.body;
 
     try {
         // Enregistre un nouvel utilisateur avec les centres d'intérêt sélectionnés
         const newUser = new User({
             email,
-            password, // Assure-toi de le hacher (par exemple avec bcrypt)
+            password, 
             pseudo,
             sexe,
+            avatar,
             centresInteret
         });
 

@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   pseudo: { type: String, required: true },
   sexe: { type: String, required: true },
+  avatar: { type: String, required: true }, 
   centresInteret: [{ type: mongoose.Schema.Types.ObjectId, ref: 'CentreInteret' }],
 });
 
