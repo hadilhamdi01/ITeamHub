@@ -40,7 +40,8 @@ app.post('/register', async (req, res) => {
             pseudo,
             sexe,
             avatar,
-            centresInteret
+            centresInteret,
+            roles: ['user'],
         });
 
         await newUser.save();
@@ -65,13 +66,14 @@ app.get('/api/centres_interet', async (req, res) => { // Assure-toi que le chemi
 
 
 // Route de connexion
+// Route de connexion
 app.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     try {
         const user = await User.findOne({ email });
         if (user && await bcrypt.compare(password, user.password)) {
-            const token = jwt.sign({ email: user.email }, SECRET_KEY, { expiresIn: '1h' });
+            const token = jwt.sign({ email: user.email, roles: user.roles }, SECRET_KEY, { expiresIn: '1h' });
             res.json({ message: 'Connexion réussie', token });
         } else {
             res.status(401).json({ message: 'Email ou mot de passe incorrect' });
@@ -81,6 +83,10 @@ app.post('/login', async (req, res) => {
         res.status(500).json({ message: 'Erreur lors de la connexion' });
     }
 });
+
+
+
+
 
 // Route pour demander la réinitialisation de mot de passe
 app.post('/forgot-password', async (req, res) => {
@@ -120,6 +126,32 @@ app.post('/forgot-password', async (req, res) => {
     }
 });
 
+// Route pour réinitialiser le mot de passe
+app.post('/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    try {
+        // Vérifier et décoder le token
+        const decoded = jwt.verify(token, RESET_PASSWORD_SECRET);
+        const email = decoded.email;
+
+        // Trouver l'utilisateur par email
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'Utilisateur non trouvé' });
+        }
+
+        // Hacher le nouveau mot de passe et l'enregistrer
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
+        await user.save();
+
+        res.json({ message: 'Mot de passe réinitialisé avec succès' });
+    } catch (err) {
+        console.error('Erreur lors de la réinitialisation du mot de passe:', err);
+        res.status(500).json({ message: 'Erreur lors de la réinitialisation du mot de passe' });
+    }
+});
 // Route pour réinitialiser le mot de passe
 app.post('/reset-password', async (req, res) => {
     const { token, newPassword } = req.body;

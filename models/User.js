@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
   sexe: { type: String, required: true },
   avatar: { type: String, required: true }, 
   centresInteret: [{ type: mongoose.Schema.Types.ObjectId, ref: 'CentreInteret' }],
+  roles: { type: [String], default: ['user'] },
 });
 
 module.exports = mongoose.model('User', userSchema);
