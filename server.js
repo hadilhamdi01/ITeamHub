@@ -3,10 +3,11 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const bodyParser = require('body-parser'); 
 const mongoose = require('mongoose');
-const nodemailer = require('nodemailer');
 const cors = require('cors');
 const User = require('./models/User');
 const CentreInteret = require('./models/CentreInteret');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 const app = express();
 const SECRET_KEY = 'abcd1234';
@@ -29,30 +30,32 @@ app.use(bodyParser.json());
 
 
 // POST /register
+// Route d'inscription
 app.post('/register', async (req, res) => {
-    const { email, password, pseudo, sexe, avatar, centresInteret } = req.body;
-
-    try {
-        // Enregistre un nouvel utilisateur avec les centres d'intérêt sélectionnés
-        const newUser = new User({
-            email,
-            password, 
-            pseudo,
-            sexe,
-            avatar,
-            centresInteret,
-            roles: ['user'],
-        });
-
-        await newUser.save();
-        res.status(201).json({ message: 'Utilisateur enregistré avec succès' });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Erreur lors de l\'enregistrement de l\'utilisateur' });
+    const { email, password, role, pseudo, sexe, avatar, centresInteret } = req.body;
+  
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email et mot de passe requis.' });
     }
-});
-
-
+  
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10); // Cryptage du mot de passe
+      const user = new User({ email, password: hashedPassword, role: ['admin'],pseudo,
+        sexe,
+        avatar,
+        centresInteret, });
+      await user.save();
+      res.status(201).json({ message: 'Utilisateur créé avec succès.' });
+    } catch (err) {
+      if (err.code === 11000) {
+        res.status(400).json({ message: 'Email déjà utilisé.' });
+      } else {
+        res.status(500).json({ message: 'Erreur du serveur.' });
+      }
+    }
+  });
+  
+ 
 app.get('/api/centres_interet', async (req, res) => { // Assure-toi que le chemin est correct ici
     try {
       const centresInteret = await CentreInteret.findAll();
@@ -63,122 +66,97 @@ app.get('/api/centres_interet', async (req, res) => { // Assure-toi que le chemi
   });
 
 
+  
 
 
-// Route de connexion
 // Route de connexion
 app.post('/login', async (req, res) => {
     const { email, password } = req.body;
-
-    try {
-        const user = await User.findOne({ email });
-        if (user && await bcrypt.compare(password, user.password)) {
-            const token = jwt.sign({ email: user.email, roles: user.roles }, SECRET_KEY, { expiresIn: '1h' });
-            res.json({ message: 'Connexion réussie', token });
-        } else {
-            res.status(401).json({ message: 'Email ou mot de passe incorrect' });
-        }
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Erreur lors de la connexion' });
+    const user = await User.findOne({ email });
+  
+    if (!user) {
+      return res.status(401).json({ status: 'error', message: 'Utilisateur non trouvé.' });
     }
-});
-
-
-
+  
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ status: 'error', message: 'Mot de passe incorrect.' });
+    }
+  
+    // Si tout va bien, envoyer une réponse réussie
+    res.json({
+      status: 'success',
+      token: 'some-jwt-token', // Exemple de jeton à renvoyer
+      role: user.role, // Exemple de rôle
+    });
+  });
+  
 
 
 // Route pour demander la réinitialisation de mot de passe
-app.post('/forgot-password', async (req, res) => {
+// Configurer le transporteur SMTP
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // Utilisez votre fournisseur de service de messagerie (ici Gmail)
+    auth: {
+      user: 'Essaiedwalid51@gmail.com',
+      pass: 'Walid12*#', // Utilisez un mot de passe spécifique ou un mot de passe d'application si nécessaire
+    },
+  });
+
+// Route pour envoyer un email de réinitialisation de mot de passe
+app.post('/reset-password', async (req, res) => {
     const { email } = req.body;
-
-    try {
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ message: 'Utilisateur non trouvé' });
-        }
-
-        // Générer un token de réinitialisation de mot de passe
-        const resetToken = jwt.sign({ email: user.email }, RESET_PASSWORD_SECRET, { expiresIn: '1h' });
-
-        // Configurer Nodemailer
-        const transporter = nodemailer.createTransport({
-            service: 'Gmail',
-            auth: {
-                user: 'essaiedwali51@gmail.com',
-                pass: 'Walid12*#',
-            },
-        });
-
-        const resetLink = `http://192.168.1.15:3000/reset-password?token=${resetToken}`;
-        const mailOptions = {
-            from: '"Votre Application" essaiedwali51@gmail.com',
-            to: email,
-            subject: 'Réinitialisation de votre mot de passe',
-            text: `Cliquez sur le lien suivant pour réinitialiser votre mot de passe : ${resetLink}`
-        };
-
-        await transporter.sendMail(mailOptions);
-        res.json({ message: 'Email de réinitialisation envoyé' });
-    } catch (err) {
-        console.error('Erreur lors de l\'envoi de l\'email:', err);
-        res.status(500).json({ message: 'Erreur lors de l\'envoi de l\'email' });
+  
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ status: 'error', message: 'Utilisateur non trouvé.' });
     }
-});
-
-// Route pour réinitialiser le mot de passe
-app.post('/reset-password', async (req, res) => {
-    const { token, newPassword } = req.body;
-
-    try {
-        // Vérifier et décoder le token
-        const decoded = jwt.verify(token, RESET_PASSWORD_SECRET);
-        const email = decoded.email;
-
-        // Trouver l'utilisateur par email
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ message: 'Utilisateur non trouvé' });
-        }
-
-        // Hacher le nouveau mot de passe et l'enregistrer
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password = hashedPassword;
-        await user.save();
-
-        res.json({ message: 'Mot de passe réinitialisé avec succès' });
-    } catch (err) {
-        console.error('Erreur lors de la réinitialisation du mot de passe:', err);
-        res.status(500).json({ message: 'Erreur lors de la réinitialisation du mot de passe' });
+  
+    // Générer un jeton de réinitialisation de mot de passe
+    const token = crypto.randomBytes(20).toString('hex');
+  
+    // Mettre à jour l'utilisateur avec ce jeton (ajoutez un champ 'resetToken' et une date d'expiration)
+    user.resetToken = token;
+    user.resetTokenExpiration = Date.now() + 3600000; // Expiration dans 1 heure
+    await user.save();
+  
+    // Créer le lien pour la réinitialisation
+    const resetLink = `http://votre-domaine.com/reset-password/${token}`;
+  
+    // Configurer l'email
+    const mailOptions = {
+      from: 'Essaiedwalid51@gmail.com',
+      to: email,
+      subject: 'Réinitialisation de votre mot de passe',
+      text: `Cliquez sur ce lien pour réinitialiser votre mot de passe : ${resetLink}`,
+    };
+  
+    // Envoyer l'email
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        return res.status(500).json({ status: 'error', message: 'Erreur lors de l\'envoi de l\'email.' });
+      }
+      res.status(200).json({ status: 'success', message: 'Email envoyé.' });
+    });
+  });
+  app.post('/reset-password/:token', async (req, res) => {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+  
+    const user = await User.findOne({ resetToken: token, resetTokenExpiration: { $gt: Date.now() } });
+    if (!user) {
+      return res.status(400).json({ status: 'error', message: 'Le lien de réinitialisation est invalide ou a expiré.' });
     }
-});
-// Route pour réinitialiser le mot de passe
-app.post('/reset-password', async (req, res) => {
-    const { token, newPassword } = req.body;
-
-    try {
-        // Vérifier et décoder le token
-        const decoded = jwt.verify(token, RESET_PASSWORD_SECRET);
-        const email = decoded.email;
-
-        // Trouver l'utilisateur par email
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ message: 'Utilisateur non trouvé' });
-        }
-
-        // Hacher le nouveau mot de passe et l'enregistrer
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password = hashedPassword;
-        await user.save();
-
-        res.json({ message: 'Mot de passe réinitialisé avec succès' });
-    } catch (err) {
-        console.error('Erreur lors de la réinitialisation du mot de passe:', err);
-        res.status(500).json({ message: 'Erreur lors de la réinitialisation du mot de passe' });
-    }
-});
-
+  
+    // Hasher le nouveau mot de passe et mettre à jour l'utilisateur
+    user.password = bcrypt.hashSync(newPassword, 10);
+    user.resetToken = undefined;
+    user.resetTokenExpiration = undefined;
+    await user.save();
+  
+    res.status(200).json({ status: 'success', message: 'Mot de passe réinitialisé avec succès.' });
+  });
+  
 const centresInteretRoutes = require('./routes/centresInteret');
 app.use(centresInteretRoutes); // Utilise les routes des centres d'intérêt
 
