@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const User = require('./models/User');
+
 const CentreInteret = require('./models/CentreInteret');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
@@ -24,11 +25,6 @@ mongoose.connect('mongodb://localhost:27017/iteam', {
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
-
-
-
-
-
 // POST /register
 // Route d'inscription
 app.post('/register', async (req, res) => {
@@ -40,7 +36,7 @@ app.post('/register', async (req, res) => {
   
     try {
       const hashedPassword = await bcrypt.hash(password, 10); // Cryptage du mot de passe
-      const user = new User({ email, password: hashedPassword, role: ['admin'],pseudo,
+      const user = new User({ email, password: hashedPassword, role: ['user'],pseudo,
         sexe,
         avatar,
         centresInteret, });
@@ -64,10 +60,6 @@ app.get('/api/centres_interet', async (req, res) => { // Assure-toi que le chemi
       res.status(500).json({ message: 'Erreur lors de la récupération des centres d\'intérêt' });
     }
   });
-
-
-  
-
 
 // Route de connexion
 app.post('/login', async (req, res) => {
@@ -93,70 +85,154 @@ app.post('/login', async (req, res) => {
   
 
 
-// Route pour demander la réinitialisation de mot de passe
-// Configurer le transporteur SMTP
-const transporter = nodemailer.createTransport({
-    service: 'gmail', // Utilisez votre fournisseur de service de messagerie (ici Gmail)
-    auth: {
-      user: 'Essaiedwalid51@gmail.com',
-      pass: 'Walid12*#', // Utilisez un mot de passe spécifique ou un mot de passe d'application si nécessaire
-    },
-  });
 
-// Route pour envoyer un email de réinitialisation de mot de passe
-app.post('/reset-password', async (req, res) => {
+
+
+
+
+  // Route pour réinitialiser le mot de passe
+  app.post('/reset-password', async (req, res) => {
     const { email } = req.body;
   
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ status: 'error', message: 'Utilisateur non trouvé.' });
-    }
+    try {
+      // Vérifiez si l'utilisateur existe dans la base de données
+      const user = await User.findOne({ email });
   
-    // Générer un jeton de réinitialisation de mot de passe
-    const token = crypto.randomBytes(20).toString('hex');
-  
-    // Mettre à jour l'utilisateur avec ce jeton (ajoutez un champ 'resetToken' et une date d'expiration)
-    user.resetToken = token;
-    user.resetTokenExpiration = Date.now() + 3600000; // Expiration dans 1 heure
-    await user.save();
-  
-    // Créer le lien pour la réinitialisation
-    const resetLink = `http://votre-domaine.com/reset-password/${token}`;
-  
-    // Configurer l'email
-    const mailOptions = {
-      from: 'Essaiedwalid51@gmail.com',
-      to: email,
-      subject: 'Réinitialisation de votre mot de passe',
-      text: `Cliquez sur ce lien pour réinitialiser votre mot de passe : ${resetLink}`,
-    };
-  
-    // Envoyer l'email
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        return res.status(500).json({ status: 'error', message: 'Erreur lors de l\'envoi de l\'email.' });
+      if (!user) {
+        return res.status(404).json({ message: 'Utilisateur non trouvé' });
       }
-      res.status(200).json({ status: 'success', message: 'Email envoyé.' });
-    });
-  });
-  app.post('/reset-password/:token', async (req, res) => {
-    const { token } = req.params;
-    const { newPassword } = req.body;
   
-    const user = await User.findOne({ resetToken: token, resetTokenExpiration: { $gt: Date.now() } });
-    if (!user) {
-      return res.status(400).json({ status: 'error', message: 'Le lien de réinitialisation est invalide ou a expiré.' });
+      // Générer un nouveau mot de passe (exemple simple)
+      const newPassword = Math.random().toString(36).slice(-8);
+  
+      // Mettre à jour le mot de passe dans la base de données
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      user.password = hashedPassword;
+      await user.save();
+      // Configurer Nodemailer pour envoyer l'email
+      const transporter = nodemailer.createTransport({
+        service: 'gmail', // Vous pouvez utiliser un autre service SMTP
+        auth: {
+          user: 'essaiedwalid51@gmail.com', // Votre adresse email
+          pass: 'goqt ndvi vlja jaoz', // Mot de passe ou App Password (Gmail)
+        },
+      });
+  
+      // Contenu de l'email
+      const mailOptions = {
+        from: 'essaiedwalid51@gmail.com', // Adresse de l'expéditeur
+        to: email, // Adresse de destination
+        subject: 'Réinitialisation de votre mot de passe',
+        text: `Bonjour,\n\nVoici votre nouveau mot de passe : ${newPassword}\n\nMerci de vous connecter avec ce nouveau mot de passe et de le changer dès que possible.`,
+      };
+  
+      // Envoyer l'email
+      await transporter.sendMail(mailOptions);
+  
+      console.log(`Email envoyé à ${email} avec le mot de passe : ${newPassword}`);
+      res.status(200).json({ message: 'Un email avec un nouveau mot de passe a été envoyé.' });
+    } catch (error) {
+      console.error('Erreur lors de la réinitialisation du mot de passe :', error);
+      res.status(500).json({ message: 'Erreur interne du serveur' });
     }
-  
-    // Hasher le nouveau mot de passe et mettre à jour l'utilisateur
-    user.password = bcrypt.hashSync(newPassword, 10);
-    user.resetToken = undefined;
-    user.resetTokenExpiration = undefined;
-    await user.save();
-  
-    res.status(200).json({ status: 'success', message: 'Mot de passe réinitialisé avec succès.' });
   });
   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const postSchema = new mongoose.Schema({
+  title: String,
+  content: String,
+  upvotes: Number,
+  downvotes: Number,
+  commentsCount: Number,
+});
+
+const communitySchema = new mongoose.Schema(
+  {
+    name: String,
+    posts: [postSchema],
+  },
+  { collection: "communityDB" } // Explicitly set the collection name
+);
+
+const Community = mongoose.model("Community", communitySchema); // Mongoose model
+
+// API Route to fetch communities
+app.get("/api/communities", async (req, res) => {
+  try {
+    const communities = await Community.find();
+    if (communities.length === 0) {
+      console.log("No communities found.");
+      return res.status(404).json({ error: "No communities found" });
+    }
+    console.log("Fetched communities:", communities);
+    res.json(communities);
+  } catch (error) {
+    console.error("Error fetching communities:", error);
+    res.status(500).json({ error: "Failed to fetch communities" });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
 const centresInteretRoutes = require('./routes/centresInteret');
 app.use(centresInteretRoutes); // Utilise les routes des centres d'intérêt
 
