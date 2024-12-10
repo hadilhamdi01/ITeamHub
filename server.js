@@ -16,7 +16,7 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
 const app = express();
-const SECRET_KEY = 'abcd1234';
+const SECRET_KEY  = 'abcd1234';
 const RESET_PASSWORD_SECRET = 'resetSecret1234';
 
 // Connexion à MongoDB
@@ -66,28 +66,74 @@ app.get('/api/centres_interet', async (req, res) => { // Assure-toi que le chemi
     }
   });
 
-// Route de connexion
+// Connexion
 app.post('/login', async (req, res) => {
-    const { email, password } = req.body;
+  const { email, password } = req.body;
+
+  try {
     const user = await User.findOne({ email });
-  
+
     if (!user) {
-      return res.status(401).json({ status: 'error', message: 'Utilisateur non trouvé.' });
+      return res.status(404).json({ message: 'Utilisateur non trouvé' });
     }
-  
+
+    // Utilisez bcrypt.compare pour comparer le mot de passe haché
     const isPasswordValid = await bcrypt.compare(password, user.password);
+
     if (!isPasswordValid) {
-      return res.status(401).json({ status: 'error', message: 'Mot de passe incorrect.' });
+      return res.status(400).json({ message: 'Mot de passe incorrect' });
     }
-  
-    // Si tout va bien, envoyer une réponse réussie
-    res.json({
-      status: 'success',
-      token: 'some-jwt-token', // Exemple de jeton à renvoyer
-      role: user.role, // Exemple de rôle
-    });
+
+    // Créer un token JWT
+    const token = jwt.sign({ id: user._id }, SECRET_KEY, { expiresIn: '1h' });
+    res.json({ token });
+  } catch (err) {
+    console.error('Erreur lors de la connexion:', err);
+    res.status(500).json({ message: 'Erreur interne du serveur' });
+  }
+});
+
+
+// Route pour récupérer les données de l'utilisateur connecté
+app.get('/auth/me', (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];  // Extraction du token depuis l'en-tête Authorization
+
+  if (!token) {
+    return res.status(401).json({ message: 'Token manquant' });  // Si le token n'est pas présent
+  }
+
+  // Vérification du token avec jwt.verify
+  jwt.verify(token, SECRET_KEY, async (err, decoded) => {
+    if (err) {
+      console.error('Erreur JWT:', err);  // Affiche l'erreur dans la console pour le débogage
+      return res.status(403).json({ message: 'Token invalide' });  // Si le token est invalide ou expiré
+    }
+
+    try {
+      // Chercher l'utilisateur dans la base de données par son ID
+      const user = await User.findById(decoded.id);
+
+      if (!user) {
+        return res.status(404).json({ message: 'Utilisateur non trouvé' });  // Si l'utilisateur n'est pas trouvé
+      }
+
+      // Retourner les informations de l'utilisateur connecté
+      res.json({
+        id: user._id,
+        email: user.email,
+        pseudo: user.pseudo,
+        sexe: user.sexe,
+        avatar: user.avatar,
+        role: user.role,
+      });
+    } catch (err) {
+      console.error('Erreur lors de la recherche de l\'utilisateur:', err);
+      res.status(500).json({ message: 'Erreur interne du serveur' });
+    }
   });
-  
+});
+
 
 
   // Route pour réinitialiser le mot de passe
@@ -113,14 +159,14 @@ app.post('/login', async (req, res) => {
       const transporter = nodemailer.createTransport({
         service: 'gmail', // Vous pouvez utiliser un autre service SMTP
         auth: {
-          user: 'essaiedwalid51@gmail.com', // Votre adresse email
+          user: 'hamdihadil51@gmail.com', // Votre adresse email
           pass: 'goqt ndvi vlja jaoz', // Mot de passe ou App Password (Gmail)
         },
       });
   
       // Contenu de l'email
       const mailOptions = {
-        from: 'essaiedwalid51@gmail.com', // Adresse de l'expéditeur
+        from: 'hamdihadil51@gmail.com', // Adresse de l'expéditeur
         to: email, // Adresse de destination
         subject: 'Réinitialisation de votre mot de passe',
         text: `Bonjour,\n\nVoici votre nouveau mot de passe : ${newPassword}\n\nMerci de vous connecter avec ce nouveau mot de passe et de le changer dès que possible.`,
@@ -137,6 +183,9 @@ app.post('/login', async (req, res) => {
     }
   });
   
+
+
+
 
 
 
