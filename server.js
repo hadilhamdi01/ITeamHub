@@ -85,13 +85,49 @@ app.post('/login', async (req, res) => {
     }
 
     // Créer un token JWT
-    const token = jwt.sign({ id: user._id }, SECRET_KEY, { expiresIn: '1h' });
-    res.json({ token });
+    const token = jwt.sign({ id: user._id }, SECRET_KEY, { expiresIn: '24h' });
+    // Créer un token de rafraîchissement (JWT) avec expiration de 7 jours
+     const refreshToken = jwt.sign({ id: user._id }, SECRET_KEY, { expiresIn: '7d' });
+
+     // Sauvegarder le refreshToken dans la base de données pour l'utilisateur
+     user.refreshToken = refreshToken;
+     await user.save();
+ 
+     res.json({ token, refreshToken });
   } catch (err) {
     console.error('Erreur lors de la connexion:', err);
     res.status(500).json({ message: 'Erreur interne du serveur' });
   }
 });
+// Route pour rafraîchir le token
+app.post('/refresh-token', async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: 'Token de rafraîchissement manquant' });
+  }
+
+  try {
+    // Vérification du refresh token
+    const decoded = jwt.verify(refreshToken, SECRET_KEY);
+
+    // Chercher l'utilisateur par ID et vérifier que le refresh token correspond
+    const user = await User.findById(decoded.id);
+
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(403).json({ message: 'Token de rafraîchissement invalide' });
+    }
+
+    // Créer un nouveau token d'accès
+    const token = jwt.sign({ id: user._id }, SECRET_KEY, { expiresIn: '24h' });
+
+    res.json({ token });
+  } catch (err) {
+    console.error('Erreur lors du rafraîchissement du token:', err);
+    res.status(403).json({ message: 'Token de rafraîchissement invalide ou expiré' });
+  }
+});
+
 
 
 // Route pour récupérer les données de l'utilisateur connecté
@@ -182,68 +218,97 @@ app.get('/auth/me', (req, res) => {
       res.status(500).json({ message: 'Erreur interne du serveur' });
     }
   });
+  //Modifier profil
+  app.put('/update-profile', async (req, res) => {
+    console.log("Requête reçue pour la mise à jour du profil");
   
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) {
+      console.log("En-tête Authorization manquant");
+      return res.status(400).json({ message: 'En-tête Authorization manquant' });
+    }
+  
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      console.log("Token manquant dans l'en-tête Authorization");
+      return res.status(401).json({ message: 'Token manquant' });
+    }
+  
+    jwt.verify(token, SECRET_KEY, async (err, decoded) => {
+      if (err) {
+        console.log("Erreur de vérification du token", err);
+        // Si le token a expiré, vous pouvez envoyer un message pour que l'utilisateur rafraîchisse son token
+        return res.status(403).json({ message: 'Token invalide ou expiré, veuillez utiliser le refresh token' });
+      }
+  
+      try {
+        console.log("Décodage du token réussi, ID utilisateur:", decoded.id);
+        const user = await User.findById(decoded.id);
+        if (!user) {
+          console.log("Utilisateur non trouvé");
+          return res.status(404).json({ message: 'Utilisateur non trouvé' });
+        }
+  
+        const { pseudo, email, avatar } = req.body;
+        console.log("Données reçues pour la mise à jour:", req.body);
+  
+        if (pseudo) user.pseudo = pseudo;
+        if (email) user.email = email;
+        if (avatar) user.avatar = avatar;
+  
+        await user.save();
+        console.log("Utilisateur mis à jour:", user);
+  
+        res.json({
+          message: 'Profil mis à jour avec succès',
+          user: {
+            id: user._id,
+            email: user.email,
+            pseudo: user.pseudo,
+            avatar: user.avatar,
+          },
+        });
+      } catch (err) {
+        console.error("Erreur lors de la mise à jour de l'utilisateur:", err);
+        res.status(500).json({ message: 'Erreur de serveur' });
+      }
+    });
+  });
+  
+  // Route pour rechercher un utilisateur par pseudo
+app.get('/users/search', async (req, res) => {
+  const { pseudo } = req.query; // On récupère le pseudo à partir des paramètres de requête
 
+  if (!pseudo) {
+    return res.status(400).json({ message: 'Le pseudo est requis pour la recherche.' });
+  }
 
+  try {
+    // Recherche de l'utilisateur dans la base de données
+    const user = await User.findOne({ pseudo });
 
+    if (!user) {
+      return res.status(404).json({ message: 'Utilisateur non trouvé.' });
+    }
 
+    // Retourner les informations de l'utilisateur trouvé
+    res.json({
+      id: user._id,
+      email: user.email,
+      pseudo: user.pseudo,
+      sexe: user.sexe,
+      avatar: user.avatar,
+      role: user.role,
+    });
+  } catch (err) {
+    console.error('Erreur lors de la recherche de l\'utilisateur:', err);
+    res.status(500).json({ message: 'Erreur interne du serveur.' });
+  }
+});
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//routes
 app.use('/api', communityRoutes); 
 app.use("/api", postRoutes);
-
-
-
-
-
-
-
-
-
-
-  
-
 
 // Lancer le serveur
 app.listen(3000, () => {
